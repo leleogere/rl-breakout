@@ -6,12 +6,9 @@ from torch.utils.tensorboard import SummaryWriter
 import random
 import os
 from tqdm import tqdm
-from PIL import Image
-import pickle
 
 from utils.q_network import QNetwork
 from utils.replay_buffer import ReplayBuffer
-from utils.utils import state_to_image
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -153,8 +150,7 @@ class DQNAgent:
         else:
             print("Memory not saved. To save it, specify save_memory=True (at the price of a higher disk usage).")
         # save other variables
-        with open(os.path.join(path, 'variables.pkl'), 'wb') as f:
-            pickle.dump([self.timestep, self.epsilon], f)
+        torch.save([self.timestep, self.epsilon], os.path.join(path, 'variables.pth'))
 
     @staticmethod
     def load(path, env):
@@ -173,7 +169,6 @@ class DQNAgent:
         else:
             print("No memory available to load. The experience replay will start empty if you continue training.")
         # load other variables
-        with open(os.path.join(path, 'variables.pkl'), 'rb') as f:
-            agent.timestep, agent.epsilon = pickle.load(f)
+        agent.timestep, agent.epsilon = torch.load(os.path.join(path, 'variables.pth'))
         # return agent
         return agent
