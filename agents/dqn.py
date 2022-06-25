@@ -6,6 +6,8 @@ from torch.utils.tensorboard import SummaryWriter
 import random
 import os
 from tqdm import tqdm
+import shutil
+from datetime import datetime
 
 from utils.q_network import QNetwork
 from utils.replay_buffer import ReplayBuffer
@@ -26,6 +28,7 @@ class DQNAgent:
             memory_size=100_000,
             update_rate=4,
             logging_directory='./logs',
+            logging_name='DQN',
     ):
         # Initialize environment
         self.env = env
@@ -55,7 +58,7 @@ class DQNAgent:
 
         # Logging to tensorboard
         print(f"Run the following command to monitor training: tensorboard --logdir {logging_directory}")
-        self.logging_directory = os.path.join(logging_directory, "DQN")
+        self.logging_directory = os.path.join(logging_directory, logging_name)
         self.writer = SummaryWriter(log_dir=self.logging_directory)
 
     def train(self, max_steps):
@@ -76,7 +79,7 @@ class DQNAgent:
             # Update network when needed
             if (self.timestep % self.update_rate == 0) & (len(self.memory) > self.batch_size):
                 loss = self.learn()
-                progress.set_description(f"Timestep: {self.timestep}, Loss: {loss:.4f}")
+                progress.set_description(f"Timestep: {self.timestep}, Loss: {loss:02.4f}")
                 self.writer.add_scalar('loss', loss, self.timestep)
 
             # Update epsilon
@@ -86,7 +89,7 @@ class DQNAgent:
             if done:
                 self.writer.add_scalar('episode_reward', current_reward, self.timestep)
                 img = np.transpose(state_to_image(self.env.render(mode='array'), show_ball=False), (2,0,1))
-                self.writer.add_image('episode_frame', img, self.timestep)
+                self.writer.add_image('last_episode_frame', img, self.timestep)
                 state = self.env.reset()
                 current_reward = 0
             else:
@@ -127,7 +130,7 @@ class DQNAgent:
             action = np.argmax(action_values.cpu().data.numpy())
             return action
 
-    def save(self, path, save_memory=False, override=False):
+    def _prepare_for_saving(self, path, save_memory, override):
         # create save directory
         try:
             os.mkdir(path)
@@ -153,23 +156,47 @@ class DQNAgent:
         # save other variables
         torch.save([self.timestep, self.epsilon], os.path.join(path, 'variables.pth'))
 
+    def save(self, path, save_memory=False, override=False):
+        # remove .zip if needed
+        if path.endswith('.zip'):
+            path = path[:-4]
+        # check if exists
+        if os.path.exists(path + '.zip') and not override:
+            raise FileExistsError(f"Save file {path + '.zip'} already exists. Use override=True to overwrite it.")
+        # create tmp directory
+        tmp_dir = path + '_' + str(datetime.now().timestamp())
+        self._prepare_for_saving(tmp_dir, save_memory, override)
+        # zip directory
+        shutil.make_archive(path, 'zip', tmp_dir)
+        print(f"Saved to {path + '.zip'}")
+        # delete tmp directory
+        shutil.rmtree(tmp_dir)
+
     @staticmethod
-    def load(path, env):
-        # Create agent with env
-        agent = DQNAgent(env=env)
-        # load q-network weights
-        agent.q_network.load_state_dict(torch.load(os.path.join(path, 'q_network.pth')))
+    def load(path, env, _agent=None):
+        # add .zip if needed
+        if not path.endswith('.zip'):
+            path += '.zip'
+        # unzip archive
+        tmp_dir = path[:-4] + '_' + str(datetime.now().timestamp())
+        shutil.unpack_archive(path, extract_dir=tmp_dir)
+        # create agent
+        agent = _agent if _agent is not None else DQNAgent(env)# load q-network weights
+        agent.q_network.load_state_dict(torch.load(os.path.join(tmp_dir, 'q_network.pth')))
         # load hyperparameters
-        with open(os.path.join(path, 'hyperparameters.txt'), 'r') as f:
+        with open(os.path.join(tmp_dir, 'hyperparameters.txt'), 'r') as f:
             for line in f:
                 key, value = line.split(':')
                 setattr(agent, key.strip(), float(value.strip()))
         # load memory
-        if os.path.exists(os.path.join(path, 'memory.pkl')):
-            agent.memory = ReplayBuffer.load(os.path.join(path, 'memory.pkl'))
+        if os.path.exists(os.path.join(tmp_dir, 'memory.pkl')):
+            agent.memory = ReplayBuffer.load(os.path.join(tmp_dir, 'memory.pkl'))
         else:
             print("No memory available to load. The experience replay will start empty if you continue training.")
         # load other variables
-        agent.timestep, agent.epsilon = torch.load(os.path.join(path, 'variables.pth'))
+        agent.timestep, agent.epsilon = torch.load(os.path.join(tmp_dir, 'variables.pth'))
+        # delete tmp directory
+        shutil.rmtree(tmp_dir)
         # return agent
         return agent
+
