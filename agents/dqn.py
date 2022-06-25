@@ -9,6 +9,7 @@ from tqdm import tqdm
 
 from utils.q_network import QNetwork
 from utils.replay_buffer import ReplayBuffer
+from utils.utils import state_to_image
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -84,8 +85,8 @@ class DQNAgent:
             # Update state
             if done:
                 self.writer.add_scalar('episode_reward', current_reward, self.timestep)
-                # img = np.transpose(state_to_image(self.env.render(mode='array'), show_ball=False), (2,0,1))
-                # self.writer.add_image('episode_frame', img, self.timestep)
+                img = np.transpose(state_to_image(self.env.render(mode='array'), show_ball=False), (2,0,1))
+                self.writer.add_image('episode_frame', img, self.timestep)
                 state = self.env.reset()
                 current_reward = 0
             else:
