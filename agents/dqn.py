@@ -28,8 +28,13 @@ class DQNAgent:
             memory_size=100_000,
             update_rate=4,
             logging_directory='./logs',
-            logging_name='DQN',
+            agent_name='DQN',
+            log_images=True,
+            checkpoint_directory='./networks_weights',
     ):
+        self.agent_name = agent_name
+        self.id = self.agent_name + '_' + datetime.now().strftime('%Y%m%d-%H%M%S')
+
         # Initialize environment
         self.env = env
         self.env.reset()
@@ -53,13 +58,16 @@ class DQNAgent:
         self.memory = ReplayBuffer(memory_size, batch_size)
 
         # Other variables
+        self.checkpoint_path = os.path.join(checkpoint_directory, f"Checkpoint_{self.id}")
+        self.best_reward = -np.inf
         self.timestep = 0
         self.epsilon = 1
 
         # Logging to tensorboard
         print(f"Run the following command to monitor training: tensorboard --logdir {logging_directory}")
-        self.logging_directory = os.path.join(logging_directory, logging_name)
+        self.logging_directory = os.path.join(logging_directory, agent_name)
         self.writer = SummaryWriter(log_dir=self.logging_directory)
+        self.log_images = log_images
 
     def train(self, max_steps):
         state = self.env.reset()
@@ -88,8 +96,13 @@ class DQNAgent:
             # Update state
             if done:
                 self.writer.add_scalar('episode_reward', current_reward, self.timestep)
-                img = np.transpose(state_to_image(self.env.render(mode='array'), show_ball=False), (2,0,1))
-                self.writer.add_image('last_episode_frame', img, self.timestep)
+                if current_reward > self.best_reward:
+                    self.writer.add_scalar('best_reward', current_reward, self.timestep)
+                    self.save(self.checkpoint_path, save_memory=True, override=True)
+                    self.best_reward = current_reward
+                if self.log_images:
+                    img = np.transpose(state_to_image(next_state, show_ball=False), (2,0,1))
+                    self.writer.add_image('last_episode_frame', img, self.timestep)
                 state = self.env.reset()
                 current_reward = 0
             else:
@@ -133,7 +146,7 @@ class DQNAgent:
     def _prepare_for_saving(self, path, save_memory, override):
         # create save directory
         try:
-            os.mkdir(path)
+            os.makedirs(path)
         except FileExistsError:
             if not override:
                 raise FileExistsError(f"Save directory {path} already exists. Use override=True to overwrite it.")
@@ -141,6 +154,7 @@ class DQNAgent:
         torch.save(self.q_network.state_dict(), os.path.join(path, 'q_network.pth'))
         # save hyperparameters
         with open(os.path.join(path, 'hyperparameters.txt'), 'w') as f:
+            f.write(f"id: {self.id}\n")
             f.write(f"gamma: {self.gamma}\n")
             f.write(f"lr: {self.lr}\n")
             f.write(f"batch_size: {self.batch_size}\n")
@@ -148,13 +162,15 @@ class DQNAgent:
             f.write(f"epsilon_decay: {self.epsilon_decay}\n")
             f.write(f"memory_size: {self.memory_size}\n")
             f.write(f"update_rate: {self.update_rate}\n")
+            f.write(f"logging_directory: {self.logging_directory}\n")
+            f.write(f"checkpoint_directory: {self.checkpoint_path}\n")
         # save memory
         if save_memory:
             self.memory.save(os.path.join(path, 'memory.pkl'))
         else:
             print("Memory not saved. To save it, specify save_memory=True (at the price of a higher disk usage).")
         # save other variables
-        torch.save([self.timestep, self.epsilon], os.path.join(path, 'variables.pth'))
+        torch.save([self.timestep, self.epsilon, self.best_reward], os.path.join(path, 'variables.pth'))
 
     def save(self, path, save_memory=False, override=False):
         # remove .zip if needed
@@ -162,13 +178,12 @@ class DQNAgent:
             path = path[:-4]
         # check if exists
         if os.path.exists(path + '.zip') and not override:
-            raise FileExistsError(f"Save file {path + '.zip'} already exists. Use override=True to overwrite it.")
+            raise FileExistsError(f"Agent {path + '.zip'} already exists. Use override=True to overwrite it.")
         # create tmp directory
         tmp_dir = path + '_' + str(datetime.now().timestamp())
         self._prepare_for_saving(tmp_dir, save_memory, override)
         # zip directory
         shutil.make_archive(path, 'zip', tmp_dir)
-        print(f"Saved to {path + '.zip'}")
         # delete tmp directory
         shutil.rmtree(tmp_dir)
 
@@ -187,14 +202,17 @@ class DQNAgent:
         with open(os.path.join(tmp_dir, 'hyperparameters.txt'), 'r') as f:
             for line in f:
                 key, value = line.split(':')
-                setattr(agent, key.strip(), float(value.strip()))
+                try:
+                    setattr(agent, key.strip(), float(value.strip()))
+                except ValueError:
+                    setattr(agent, key.strip(), value.strip())
         # load memory
         if os.path.exists(os.path.join(tmp_dir, 'memory.pkl')):
             agent.memory = ReplayBuffer.load(os.path.join(tmp_dir, 'memory.pkl'))
         else:
             print("No memory available to load. The experience replay will start empty if you continue training.")
         # load other variables
-        agent.timestep, agent.epsilon = torch.load(os.path.join(tmp_dir, 'variables.pth'))
+        agent.timestep, agent.epsilon, agent.best_reward = torch.load(os.path.join(tmp_dir, 'variables.pth'))
         # delete tmp directory
         shutil.rmtree(tmp_dir)
         # return agent
