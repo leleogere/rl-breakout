@@ -26,7 +26,20 @@ class DoubleDQNAgent(DQNAgent):
             checkpoint_directory='./networks_weights',
 
     ):
-        super().__init__(env, gamma, lr, batch_size, epsilon_min, epsilon_decay, memory_size, update_rate, logging_directory, agent_name, log_images, checkpoint_directory)
+        super().__init__(
+            env=env,
+            gamma=gamma,
+            lr=lr,
+            batch_size=batch_size,
+            epsilon_min=epsilon_min,
+            epsilon_decay=epsilon_decay,
+            memory_size=memory_size,
+            update_rate=update_rate,
+            logging_directory=logging_directory,
+            agent_name=agent_name,
+            log_images=log_images,
+            checkpoint_directory=checkpoint_directory
+        )
         self.target_update_rate = target_update_rate
         self.target_network = QNetwork(self.state_shape, self.action_size).to(device)
         self.target_network.load_state_dict(self.q_network.state_dict())  # initialise target network
