@@ -66,15 +66,6 @@ class DoubleDQNAgent(DQNAgent):
             self.target_network.load_state_dict(self.q_network.state_dict())
         return loss.item()
 
-    def _prepare_for_saving(self, path, save_memory, override):
-        super()._prepare_for_saving(path, save_memory, override)
-        # save new hyperparameter
-        with open(os.path.join(path, 'hyperparameters.txt'), 'a') as f:
-            f.write(f"target_update_rate: {self.target_update_rate}\n")
-
     @staticmethod
-    def load(path, env, _agent=None):
-        agent = super(DoubleDQNAgent, DoubleDQNAgent).load(path, env, _agent=DoubleDQNAgent(env))
-        agent.target_network.load_state_dict(agent.q_network.state_dict())
-        agent.target_network.eval()
-        return agent
+    def load(path) -> 'DoubleDQNAgent':
+        return super(DoubleDQNAgent, DoubleDQNAgent).load(path)

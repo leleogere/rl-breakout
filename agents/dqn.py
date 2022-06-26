@@ -7,6 +7,7 @@ import random
 import os
 from tqdm import tqdm
 import shutil
+from zipfile import ZipFile
 from datetime import datetime
 
 from utils.q_network import QNetwork
@@ -58,7 +59,7 @@ class DQNAgent:
         self.memory = ReplayBuffer(memory_size, batch_size)
 
         # Other variables
-        self.checkpoint_path = os.path.join(checkpoint_directory, f"Checkpoint_{self.id}")
+        self.checkpoint_path = os.path.join(checkpoint_directory, f"Checkpoint_{self.id}.zip")
         self.best_reward = -np.inf
         self.timestep = 0
         self.epsilon = 1
@@ -143,78 +144,38 @@ class DQNAgent:
             action = np.argmax(action_values.cpu().data.numpy())
             return action
 
-    def _prepare_for_saving(self, path, save_memory, override):
-        # create save directory
+    def save(self, path, save_memory=True, override=False):
+        if os.path.exists(path) and not override:
+            raise FileExistsError(f"Agent {path} already exists. Use override=True to overwrite it.")
+        tmp_path = os.path.join(path + '_' + datetime.now().strftime('%Y%m%d-%H%M%S'), "agent.pt")
+        os.makedirs(os.path.dirname(tmp_path))
+        writer_backup = self.writer
+        memory_backup = self.memory
         try:
-            os.makedirs(path)
-        except FileExistsError:
-            if not override:
-                raise FileExistsError(f"Save directory {path} already exists. Use override=True to overwrite it.")
-        # save q-network weights
-        torch.save(self.q_network.state_dict(), os.path.join(path, 'q_network.pth'))
-        # save hyperparameters
-        with open(os.path.join(path, 'hyperparameters.txt'), 'w') as f:
-            f.write(f"id: {self.id}\n")
-            f.write(f"gamma: {self.gamma}\n")
-            f.write(f"lr: {self.lr}\n")
-            f.write(f"batch_size: {self.batch_size}\n")
-            f.write(f"epsilon_min: {self.epsilon_min}\n")
-            f.write(f"epsilon_decay: {self.epsilon_decay}\n")
-            f.write(f"memory_size: {self.memory_size}\n")
-            f.write(f"update_rate: {self.update_rate}\n")
-            f.write(f"logging_directory: {self.logging_directory}\n")
-            f.write(f"checkpoint_directory: {self.checkpoint_path}\n")
-        # save memory
-        if save_memory:
-            self.memory.save(os.path.join(path, 'memory.pkl'))
-        else:
-            print("Memory not saved. To save it, specify save_memory=True (at the price of a higher disk usage).")
-        # save other variables
-        torch.save([self.timestep, self.epsilon, self.best_reward], os.path.join(path, 'variables.pth'))
-
-    def save(self, path, save_memory=False, override=False):
-        # remove .zip if needed
-        if path.endswith('.zip'):
-            path = path[:-4]
-        # check if exists
-        if os.path.exists(path + '.zip') and not override:
-            raise FileExistsError(f"Agent {path + '.zip'} already exists. Use override=True to overwrite it.")
-        # create tmp directory
-        tmp_dir = path + '_' + str(datetime.now().timestamp())
-        self._prepare_for_saving(tmp_dir, save_memory, override)
-        # zip directory
-        shutil.make_archive(path, 'zip', tmp_dir)
-        # delete tmp directory
-        shutil.rmtree(tmp_dir)
+            self.writer = None
+            if not save_memory:
+                print("Memory not saved. To save it, specify save_memory=True (at the price of a higher disk usage).")
+                self.memory = None
+            torch.save(self, tmp_path)
+            with ZipFile(path, 'w') as zip_file:
+                zip_file.write(tmp_path, arcname=os.path.basename(tmp_path))
+            shutil.rmtree(os.path.dirname(tmp_path))
+        finally:
+            self.writer = writer_backup
+            if not save_memory:
+                self.memory = memory_backup
 
     @staticmethod
-    def load(path, env, _agent=None):
-        # add .zip if needed
-        if not path.endswith('.zip'):
-            path += '.zip'
-        # unzip archive
-        tmp_dir = path[:-4] + '_' + str(datetime.now().timestamp())
-        shutil.unpack_archive(path, extract_dir=tmp_dir)
-        # create agent
-        agent = _agent if _agent is not None else DQNAgent(env)# load q-network weights
-        agent.q_network.load_state_dict(torch.load(os.path.join(tmp_dir, 'q_network.pth')))
-        # load hyperparameters
-        with open(os.path.join(tmp_dir, 'hyperparameters.txt'), 'r') as f:
-            for line in f:
-                key, value = line.split(':')
-                try:
-                    setattr(agent, key.strip(), float(value.strip()))
-                except ValueError:
-                    setattr(agent, key.strip(), value.strip())
-        # load memory
-        if os.path.exists(os.path.join(tmp_dir, 'memory.pkl')):
-            agent.memory = ReplayBuffer.load(os.path.join(tmp_dir, 'memory.pkl'))
-        else:
-            print("No memory available to load. The experience replay will start empty if you continue training.")
-        # load other variables
-        agent.timestep, agent.epsilon, agent.best_reward = torch.load(os.path.join(tmp_dir, 'variables.pth'))
-        # delete tmp directory
-        shutil.rmtree(tmp_dir)
-        # return agent
+    def load(path) ->  'DQNAgent':
+        tmp_path = path + '_' + datetime.now().strftime('%Y%m%d-%H%M%S')
+        shutil.unpack_archive(path, tmp_path)
+        try:
+            agent = torch.load(tmp_path + "/agent.pt")
+            if not hasattr(agent, 'writer') or agent.writer is None:
+                agent.writer = SummaryWriter(log_dir=agent.logging_directory)
+            if agent.memory is None:
+                print("No memory available to load. The experience replay will start empty if you continue training.")
+                agent.memory = ReplayBuffer(agent.memory_size, agent.batch_size)
+        finally:
+            shutil.rmtree(tmp_path)
         return agent
-
