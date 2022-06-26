@@ -166,11 +166,12 @@ class DQNAgent:
                 self.memory = memory_backup
 
     @staticmethod
-    def load(path, device='cuda') ->  'DQNAgent':
+    def load(path) ->  'DQNAgent':
         tmp_path = path + '_' + datetime.now().strftime('%Y%m%d-%H%M%S')
         shutil.unpack_archive(path, tmp_path)
         try:
-            agent = torch.load(tmp_path + "/agent.pt", map_location=torch.device(device))
+            agent = torch.load(tmp_path + "/agent.pt", map_location=device)
+            agent.q_network.to(device)
             if not hasattr(agent, 'writer') or agent.writer is None:
                 agent.writer = SummaryWriter(log_dir=agent.logging_directory)
             if agent.memory is None:

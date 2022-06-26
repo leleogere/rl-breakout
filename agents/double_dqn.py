@@ -68,4 +68,6 @@ class DoubleDQNAgent(DQNAgent):
 
     @staticmethod
     def load(path) -> 'DoubleDQNAgent':
-        return super(DoubleDQNAgent, DoubleDQNAgent).load(path)
+        agent: DoubleDQNAgent = super(DoubleDQNAgent, DoubleDQNAgent).load(path)
+        agent.target_network.to(device)
+        return agent
