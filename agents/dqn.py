@@ -12,7 +12,8 @@ from datetime import datetime
 
 from utils.q_network import QNetwork
 from utils.replay_buffer import ReplayBuffer
-from utils.utils import state_to_image
+from utils.utils import state_to_image, image_to_state
+from torch.nn.functional import softmax
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -143,6 +144,18 @@ class DQNAgent:
                 action_values = self.q_network(state)
             action = np.argmax(action_values.cpu().data.numpy())
             return action
+
+    def act_for_lime(self,img):
+        final_results=[]
+        for i in range(0,img.shape[0]):
+            state=image_to_state(img[i])
+            state = torch.from_numpy(state).float().unsqueeze(0).to(device)
+            with torch.no_grad():
+                values=self.q_network(state)
+            results = softmax(values)
+            final_results.append(results.numpy())
+        final_results=np.array(final_results).squeeze(1)
+        return np.array(final_results)
 
     def save(self, path, save_memory=True, override=False):
         if os.path.exists(path) and not override:
