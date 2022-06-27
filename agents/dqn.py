@@ -7,7 +7,7 @@ import random
 import os
 from tqdm import tqdm
 import shutil
-from zipfile import ZipFile
+from zipfile import ZipFile, ZIP_DEFLATED
 from datetime import datetime
 
 from utils.q_network import QNetwork
@@ -157,7 +157,7 @@ class DQNAgent:
                 print("Memory not saved. To save it, specify save_memory=True (at the price of a higher disk usage).")
                 self.memory = None
             torch.save(self, tmp_path)
-            with ZipFile(path, 'w') as zip_file:
+            with ZipFile(path, 'w', ZIP_DEFLATED) as zip_file:
                 zip_file.write(tmp_path, arcname=os.path.basename(tmp_path))
             shutil.rmtree(os.path.dirname(tmp_path))
         finally:
