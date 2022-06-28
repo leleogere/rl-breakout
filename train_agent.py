@@ -66,4 +66,4 @@ if __name__ == '__main__':
     agent.save(agent_path, override=True, save_memory=True)
 
     if play_a_game:
-        play_game(env, agent, path=f"./games/{agent_type}.gif")
+        play_game(env, agent, path=f"./games/{agent_type}-agent-game.gif")
