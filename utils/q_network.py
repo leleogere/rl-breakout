@@ -1,10 +1,18 @@
+from typing import Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 
 class QNetwork(nn.Module):
-    def __init__(self, state_shape, action_size):
+    """Q-network for the DQN agent.
+
+    Parameters
+    ----------
+    state_shape: Shape of the state
+    action_size: Number of available actions
+    """
+    def __init__(self, state_shape: Tuple[int, int, int], action_size: int):
         super(QNetwork, self).__init__()
         self.maxpool = nn.MaxPool2d(kernel_size=2)
         self.conv1 = nn.Conv2d(in_channels=state_shape[-1], out_channels=16, kernel_size=3)
@@ -16,7 +24,13 @@ class QNetwork(nn.Module):
         # self.fc2 = nn.Linear(512, 256)
         self.fc3 = nn.Linear(512, action_size)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass of the network.
+        
+        Parameters
+        ----------
+        x: Tensor of shape (batch_size, *state_shape)
+        """
         out = torch.permute(x, (0,3,1,2))  # put channels first
         out = F.relu(self.conv1(out))
         # out = self.maxpool(out)

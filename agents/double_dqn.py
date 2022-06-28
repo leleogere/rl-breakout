@@ -1,31 +1,53 @@
-import torch
-import torch.nn.functional as F
+from __future__ import annotations
+
 import os
 
+import torch
+import torch.nn.functional as F
+
 from agents.dqn import DQNAgent
+
 from utils.q_network import QNetwork
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class DoubleDQNAgent(DQNAgent):
+    """Double DQN agent to be trained.
+
+    Parameters
+    ----------
+    env: Environment to train the agent on (optimized for MinAtar/Breakout-v1)
+    gamma: Discount factor for future rewards
+    lr: Learning rate
+    batch_size: Number of samples to use for each learning step
+    epsilon_min: Minimum value of epsilon for the epsilon-greedy policy
+    epsilon_decay: Decay rate of epsilon per timestep
+    memory_size: Number of samples to store in the replay buffer
+    update_rate: Number of timesteps between each learning step
+    target_update_rate: Number of timesteps between each update of the target network
+    logging_directory: Directory to save the tensorboard logs to
+    agent_name: Name of the agent
+    log_images: Whether to log images of the last episode to tensorboard (won't work with another environment than MinAtar/Breakout-v1)
+    checkpoint_directory: Directory to save the agent when it reaches a new best reward
+    """
     def __init__(
             self,
-            env,
-            gamma=0.99,
-            lr=0.001,
-            batch_size=32,
-            epsilon_min=0.01,
-            epsilon_decay=0.999,
-            memory_size=100_000,
-            update_rate=4,
+            env: gym.Env,
+            gamma: float = 0.99,
+            lr: float = 0.001,
+            batch_size: int = 32,
+            epsilon_min: float = 0.01,
+            epsilon_decay: float = 0.999,
+            memory_size: int = 100_000,
+            update_rate:int = 4,
             target_update_rate=1000,
-            logging_directory='./logs',
-            agent_name='DDQN',
-            log_images=True,
-            checkpoint_directory='./networks_weights',
+            logging_directory: str = './logs',
+            agent_name: str = 'DDQN',
+            log_images: bool = True,
+            checkpoint_directory: str | None ='./networks_weights',
 
-    ):
+    ) -> DoubleDQNAgent:
         super().__init__(
             env=env,
             gamma=gamma,
@@ -46,11 +68,18 @@ class DoubleDQNAgent(DQNAgent):
         self.target_network.eval()  # set target network to eval mode
 
     def learn(self):
+        """Update the Q-network.
+        
+        Returns
+        -------
+        loss: Loss of the network
+        """
         experiences_batch = self.memory.sample()
         states, actions, rewards, next_states, dones = experiences_batch
-        # Use the online network to choose action
+        # Use the online network to choose actions
         action_values = self.q_network(next_states).detach()
         action_indices = torch.argmax(action_values, dim=1, keepdim=True)
+        # Use the target network to get corresponding action values
         action_values_target = self.target_network(next_states).detach()
         max_action_values_target = action_values_target.gather(1, action_indices)
 
@@ -67,7 +96,17 @@ class DoubleDQNAgent(DQNAgent):
         return loss.item()
 
     @staticmethod
-    def load(path) -> 'DoubleDQNAgent':
+    def load(path: str) -> DoubleDQNAgent:
+        """Load an agent from a file.
+
+        Parameters
+        ----------
+        path: Path to load the agent from
+        
+        Returns
+        -------
+        agent: Loaded agent
+        """
         agent: DoubleDQNAgent = super(DoubleDQNAgent, DoubleDQNAgent).load(path)
         agent.target_network.to(device)
         return agent
