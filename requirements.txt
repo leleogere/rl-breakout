@@ -1,0 +1,5 @@
+tensorboard
+Pillow==9.1.1
+gym==0.21
+minatar
+imageio

@@ -20,7 +20,7 @@ def render_env(env):
     plt.show()
 
 
-def render_game(frames, fps=20, show_every_x_frames=1, path='game.gif', size=200):
+def render_game(frames, fps=20, show_every_x_frames=1, path='games.gif', size=200):
     processed_frames = []
     for frame in frames[::show_every_x_frames]:
         img = Image.fromarray(state_to_image(frame)).resize((size, size), Image.Resampling.NEAREST)
@@ -29,7 +29,16 @@ def render_game(frames, fps=20, show_every_x_frames=1, path='game.gif', size=200
     display(JImage(open(path, 'rb').read()))
 
 
-def play_game(env, agent=None, fps=20, show_every_x_frames=1, path='game.gif', size=200):
+def image_to_state(img):
+    s = np.zeros(shape=(10, 10, 4))
+    s[-1, :, 0] = img[-1, :, 0]
+    s[:, :, 1:3] = img[:, :, 1:]
+    s[:-1, :, 3] = img[:-1, :, 0]
+    s = s.astype(np.bool8)
+    return s
+
+
+def play_game(env, agent=None, fps=20, show_every_x_frames=1, path='games.gif', size=200):
     frames = []
     rewards = 0
     state = env.reset()
