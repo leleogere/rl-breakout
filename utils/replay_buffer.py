@@ -1,7 +1,11 @@
-import torch
-import numpy as np
+from __future__ import annotations
+
 import random
 from collections import deque, namedtuple
+from typing import Tuple
+
+import numpy as np
+import torch
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -9,26 +13,29 @@ Experience = namedtuple("Experience", field_names=["state", "action", "reward", 
 
 
 class ReplayBuffer:
-    def __init__(self, buffer_size, batch_size):
-        """
-        Replay memory allow agent to record experiences and learn from them
-
-        Parameters
-        ---------
-        buffer_size (int): maximum size of internal memory
-        batch_size (int): sample size from experience
-        """
+    """Buffer to store experience tuples.
+    
+    Parameters
+    ----------
+    buffer_size: maximum size of internal memory
+    batch_size: sample size from experience
+    """
+    def __init__(self, buffer_size: int, batch_size: int) -> ReplayBuffer:
         self.batch_size = batch_size
         self.memory = deque(maxlen=buffer_size)
 
-    def add(self, state, action, reward, next_state, done):
+    def add(self, state: np.ndarray, action: int, reward: int, next_state: np.ndarray, done: bool) -> None:
         """Add experience"""
         experience = Experience(state, action, reward, next_state, done)
         self.memory.append(experience)
 
-    def sample(self):
+    def sample(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
-        Sample randomly and return (state, action, reward, next_state, done) tuple as torch tensors
+        Get a random sample from the memory.
+
+        Returns
+        -------
+        states, actions, rewards, next_states, dones
         """
         experiences = random.sample(self.memory, k=self.batch_size)
 
@@ -42,12 +49,15 @@ class ReplayBuffer:
 
         return states, actions, rewards, next_states, dones
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """Return the current size of internal memory."""
         return len(self.memory)
 
-    def save(self, path):
+    def save(self, path: str) -> None:
+        """Save the buffer to a file."""
         torch.save(self, path)
 
     @staticmethod
-    def load(path):
+    def load(path: str) -> ReplayBuffer:
+        """Load a buffer from a file."""
         return torch.load(path)

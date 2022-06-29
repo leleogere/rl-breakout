@@ -1,39 +1,60 @@
+from __future__ import annotations
+
+import os
+import random
+import shutil
+from datetime import datetime
+from zipfile import ZIP_DEFLATED, ZipFile
+
+import gym
 import numpy as np
 import torch
-import torch.optim as optim
 import torch.nn.functional as F
+import torch.optim as optim
+from torch.nn.functional import softmax
 from torch.utils.tensorboard import SummaryWriter
-import random
-import os
 from tqdm import tqdm
-import shutil
-from zipfile import ZipFile, ZIP_DEFLATED
-from datetime import datetime
 
 from utils.q_network import QNetwork
 from utils.replay_buffer import ReplayBuffer
-from utils.utils import state_to_image, image_to_state
-from torch.nn.functional import softmax
+from utils.utils import image_to_state, state_to_image
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class DQNAgent:
+    """DQN agent to be trained.
+
+    Parameters
+    ----------
+    env: Environment to train the agent on (optimized for MinAtar/Breakout-v1)
+    gamma: Discount factor for future rewards
+    lr: Learning rate
+    batch_size: Number of samples to use for each learning step
+    epsilon_min: Minimum value of epsilon for the epsilon-greedy policy
+    epsilon_decay: Decay rate of epsilon per timestep
+    memory_size: Number of samples to store in the replay buffer
+    update_rate: Number of timesteps between each learning step
+    logging_directory: Directory to save the tensorboard logs to
+    agent_name: Name of the agent
+    log_images: Whether to log images of the last episode to tensorboard (won't work with another environment than MinAtar/Breakout-v1)
+    checkpoint_directory: Directory to save the agent when it reaches a new best reward
+    """
     def __init__(
             self,
-            env,
-            gamma=0.99,
-            lr=0.001,
-            batch_size=32,
-            epsilon_min=0.01,
-            epsilon_decay=0.999,
-            memory_size=100_000,
-            update_rate=4,
-            logging_directory='./logs',
-            agent_name='DQN',
-            log_images=True,
-            checkpoint_directory='./networks_weights',
-    ):
+            env: gym.Env,
+            gamma: float = 0.99,
+            lr: float = 0.001,
+            batch_size: int = 32,
+            epsilon_min: float = 0.01,
+            epsilon_decay: float = 0.999,
+            memory_size: int = 100_000,
+            update_rate:int = 4,
+            logging_directory: str = './logs',
+            agent_name: str = 'DQN',
+            log_images: bool = True,
+            checkpoint_directory: str | None ='./networks_weights',
+    ) -> DQNAgent:
         self.agent_name = agent_name
         self.id = self.agent_name + '_' + datetime.now().strftime('%Y%m%d-%H%M%S')
 
@@ -60,7 +81,7 @@ class DQNAgent:
         self.memory = ReplayBuffer(memory_size, batch_size)
 
         # Other variables
-        self.checkpoint_path = os.path.join(checkpoint_directory, f"Checkpoint_{self.id}.zip")
+        self.checkpoint_path = None if checkpoint_directory is None else os.path.join(checkpoint_directory, f"Checkpoint_{self.id}.zip")
         self.best_reward = -np.inf
         self.timestep = 0
         self.epsilon = 1
@@ -71,7 +92,13 @@ class DQNAgent:
         self.writer = SummaryWriter(log_dir=self.logging_directory)
         self.log_images = log_images
 
-    def train(self, max_steps):
+    def train(self, max_steps: int) -> None:
+        """Train the agent for a given number of steps.
+        
+        Parameters
+        ----------
+        max_steps: Number of steps to train the agent for
+        """
         state = self.env.reset()
         current_reward = 0
         progress = tqdm(range(max_steps))
@@ -100,7 +127,8 @@ class DQNAgent:
                 self.writer.add_scalar('episode_reward', current_reward, self.timestep)
                 if current_reward > self.best_reward:
                     self.writer.add_scalar('best_reward', current_reward, self.timestep)
-                    self.save(self.checkpoint_path, save_memory=True, override=True)
+                    if self.checkpoint_path is not None:
+                        self.save(self.checkpoint_path, save_memory=True, override=True)
                     self.best_reward = current_reward
                 if self.log_images:
                     img = np.transpose(state_to_image(next_state, show_ball=False), (2,0,1))
@@ -113,7 +141,13 @@ class DQNAgent:
             # Logging to tensorboard
             self.writer.add_scalar('epsilon', self.epsilon, self.timestep)
 
-    def learn(self):
+    def learn(self) -> float:
+        """Update the Q-network.
+        
+        Returns
+        -------
+        loss: Loss of the network
+        """
         # Sample from memory
         experiences_batch = self.memory.sample()
         states, actions, rewards, next_states, dones = experiences_batch
@@ -134,7 +168,18 @@ class DQNAgent:
 
         return loss.item()
 
-    def act(self, state, train=False):
+    def act(self, state: np.ndarray, train: bool = False) -> int:
+        """Choose an action based on the current state.
+
+        Parameters
+        ----------
+        state: State of the environment
+        train: Whether to use epsilon-greedy or directly the policy
+
+        Returns
+        -------
+        action: Action chosen
+        """
         # Epsilon-greedy action selection
         if train and (random.uniform(0, 1) < self.epsilon):
             return self.env.action_space.sample()
@@ -145,19 +190,45 @@ class DQNAgent:
             action = np.argmax(action_values.cpu().data.numpy())
             return action
 
-    def act_for_lime(self,img):
-        final_results=[]
-        for i in range(0,img.shape[0]):
-            state=image_to_state(img[i])
+    def act_for_lime(self, imgs: np.ndarray) -> int:
+        """Specific function to use for with LIME.
+        Predict Q-values for a batch of images with 3 channels (not state that have 4 channels,
+        see utils functions `state_to_image` and `image_to_state`) and apply a softmax over them
+        to simulate probabilities for actions.
+        Note that this function will likely *not* work with another environment than MinAtar/Breakout-v1.
+
+        Parameters
+        ----------
+        imgs: Batch of images of the environment (only 3 channels, see function `state_to_image`)
+
+        Returns
+        -------
+        probabilities: Probabilities of each action for the batch (shape = (batch_size, num_actions))
+
+        Note
+        ----
+        This function is possibly broken as no results were archieved with LIME so far.
+        """
+        probabilities = []
+        for i in range(imgs.shape[0]):
+            state = image_to_state(imgs[i])
             state = torch.from_numpy(state).float().unsqueeze(0).to(device)
             with torch.no_grad():
-                values=self.q_network(state)
+                values = self.q_network(state)
             results = softmax(values)
-            final_results.append(results.numpy())
-        final_results=np.array(final_results).squeeze(1)
-        return np.array(final_results)
+            probabilities.append(results.numpy())
+        probabilities = np.array(probabilities).squeeze(1)
+        return probabilities
 
-    def save(self, path, save_memory=True, override=False):
+    def save(self, path: str, save_memory: bool = True, override: bool = False) -> None:
+        """Save the agent to a file.
+
+        Parameters
+        ----------
+        path: Path to save the agent to
+        save_memory: Whether to include the replay buffer (at the price of a larger file)
+        override: Whether to override the file if it already exists
+        """
         if os.path.exists(path) and not override:
             raise FileExistsError(f"Agent {path} already exists. Use override=True to overwrite it.")
         tmp_path = os.path.join(path + '_' + datetime.now().strftime('%Y%m%d-%H%M%S'), "agent.pt")
@@ -179,7 +250,17 @@ class DQNAgent:
                 self.memory = memory_backup
 
     @staticmethod
-    def load(path) ->  'DQNAgent':
+    def load(path: str) ->  DQNAgent:
+        """Load an agent from a file.
+
+        Parameters
+        ----------
+        path: Path to load the agent from
+        
+        Returns
+        -------
+        agent: Loaded agent
+        """
         tmp_path = path + '_' + datetime.now().strftime('%Y%m%d-%H%M%S')
         shutil.unpack_archive(path, tmp_path)
         try:
