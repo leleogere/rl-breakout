@@ -6,8 +6,6 @@ from IPython.display import Image as JImage
 from IPython.display import display
 from PIL import Image
 
-from agents.dqn import DQNAgent
-
 
 def state_to_image(state: np.ndarray, show_ball: bool = True) -> np.ndarray:
     """Convert a state to an image.
@@ -81,7 +79,7 @@ def image_to_state(img: np.ndarray) -> np.ndarray:
     return s
 
 
-def play_game(env, agent: DQNAgent | None = None, fps: int = 20, show_every_x_frames: int = 1, path: str = './game.gif', size: int = 200) -> None:
+def play_game(env, agent = None, fps: int = 20, show_every_x_frames: int = 1, path: str = './game.gif', size: int = 200) -> None:
     """Play a game and render it.
 
     Parameters
