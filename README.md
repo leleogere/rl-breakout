@@ -32,7 +32,7 @@ The arguments are :
 * `--epsilon_min`: by default **1e-2**.
 * `--epsilon_decay`: by default **0.999**.
 * `--memory_size`: by default **100 000**.
-* `--nb_episodes`: by default **5000**.
+* `--max_steps`: by default **5000**.
 * `--play_game`: boolean to choose if we play a game after the training - by default **False**.
 
 For example, we can execute :  

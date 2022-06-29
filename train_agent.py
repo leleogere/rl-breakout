@@ -19,7 +19,7 @@ if __name__ == '__main__':
     parser.add_argument('--epsilon_min', type=float, default=0.01, help='Minimum of epsilon')
     parser.add_argument('--epsilon_decay', type=float, default=0.999, help='Decay of epsilon')
     parser.add_argument('--memory_size', type=int, default=100_000, help='Memory size')
-    parser.add_argument('--nb_episodes', type=int, default=5000, help='number of episodes')
+    parser.add_argument('--max_steps', type=int, default=5000, help='Number of steps of training')
     parser.add_argument('--play_game', type=bool, default=False, help='Play a game after the training')
 
     args = parser.parse_args()
@@ -31,7 +31,7 @@ if __name__ == '__main__':
     epsilon_min = args.epsilon_min
     epsilon_decay = args.epsilon_decay
     memory_size = args.memory_size
-    nb_episodes = args.nb_episodes
+    max_steps = args.max_steps
     play_a_game = args.play_game
 
     saving_dir = './networks_weights/'
@@ -60,7 +60,7 @@ if __name__ == '__main__':
             checkpoint_directory=saving_dir,
         )
 
-    agent.train(nb_episodes)
+    agent.train(max_steps)
 
     agent_path = os.path.join(saving_dir, agent_type + '.zip')
     agent.save(agent_path, override=True, save_memory=True)
