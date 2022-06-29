@@ -2,3 +2,4 @@ logs
 .idea
 *.gif
 *.pyc
+__pycache__
